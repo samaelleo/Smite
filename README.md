@@ -109,3 +109,9 @@ smite-node logs         # View logs
 ## License
 
 MIT
+
+---
+
+<div align="center">
+  Made with ❤️ by <a href="https://github.com/zZedix">zZedix</a> | v0.1.0
+</div>
