@@ -128,6 +128,19 @@ fi
 # Create config directory
 mkdir -p config
 
+# Enable IP forwarding (required for host network mode)
+echo ""
+echo "Enabling IP forwarding on host system..."
+if ! grep -q "net.ipv4.ip_forward=1" /etc/sysctl.conf; then
+    echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
+fi
+if ! grep -q "net.ipv6.conf.all.forwarding=1" /etc/sysctl.conf; then
+    echo "net.ipv6.conf.all.forwarding=1" >> /etc/sysctl.conf
+fi
+sysctl -p > /dev/null 2>&1 || true
+sysctl -w net.ipv4.ip_forward=1 > /dev/null 2>&1 || true
+sysctl -w net.ipv6.conf.all.forwarding=1 > /dev/null 2>&1 || true
+
 # Start services
 echo ""
 echo "Starting Smite Node..."

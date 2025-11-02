@@ -16,10 +16,10 @@ services:
       - SYS_MODULE
     devices:
       - /dev/net/tun:/dev/net/tun
-    sysctls:
-      - net.ipv4.ip_forward=1
-      - net.ipv6.conf.all.disable_ipv6=0
-      - net.ipv6.conf.all.forwarding=1
+    # Note: sysctls cannot be set with host network mode
+    # Enable IP forwarding on the host system:
+    # echo 'net.ipv4.ip_forward=1' | tee -a /etc/sysctl.conf
+    # sysctl -p
     volumes:
       - ./certs:/etc/smite-node/certs:ro
       - ./config:/etc/smite-node
