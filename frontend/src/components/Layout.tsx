@@ -1,6 +1,7 @@
 import { ReactNode, useState, useEffect } from 'react'
-import { Link, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Network, Settings, FileText, Activity, Moon, Sun, Github, Menu, X } from 'lucide-react'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { LayoutDashboard, Network, Settings, FileText, Activity, Moon, Sun, Github, Menu, X, LogOut } from 'lucide-react'
+import { useAuth } from '../contexts/AuthContext'
 import SmiteLogoDark from '../assets/SmiteD.png'
 import SmiteLogoLight from '../assets/SmiteL.png'
 
@@ -10,6 +11,8 @@ interface LayoutProps {
 
 const Layout = ({ children }: LayoutProps) => {
   const location = useLocation()
+  const navigate = useNavigate()
+  const { logout, username } = useAuth()
   const [darkMode, setDarkMode] = useState(() => {
     const saved = localStorage.getItem('darkMode')
     return saved ? JSON.parse(saved) : false
@@ -63,13 +66,25 @@ const Layout = ({ children }: LayoutProps) => {
               >
                 <X size={20} />
               </button>
-              <button
-                onClick={() => setDarkMode(!darkMode)}
-                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300"
-                title={darkMode ? 'Light mode' : 'Dark mode'}
-              >
-                {darkMode ? <Sun size={20} /> : <Moon size={20} />}
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setDarkMode(!darkMode)}
+                  className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300"
+                  title={darkMode ? 'Light mode' : 'Dark mode'}
+                >
+                  {darkMode ? <Sun size={20} /> : <Moon size={20} />}
+                </button>
+                <button
+                  onClick={() => {
+                    logout()
+                    navigate('/login')
+                  }}
+                  className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300"
+                  title="Logout"
+                >
+                  <LogOut size={20} />
+                </button>
+              </div>
             </div>
             <div className="flex flex-col items-center gap-3">
               <img 
@@ -80,6 +95,9 @@ const Layout = ({ children }: LayoutProps) => {
               <div className="text-center">
                 <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">Smite</h1>
                 <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-1">Control Panel</p>
+                {username && (
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Logged in as {username}</p>
+                )}
               </div>
             </div>
           </div>

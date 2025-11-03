@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.database import init_db
-from app.routers import nodes, tunnels, panel, usage, status, logs
+from app.routers import nodes, tunnels, panel, usage, status, logs, auth
 from app.hysteria2_server import Hysteria2Server
 from app.port_forwarder import port_forwarder
 from app.rathole_server import rathole_server_manager
@@ -148,6 +148,7 @@ app.add_middleware(
 )
 
 # Routes
+app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(panel.router, prefix="/api/panel", tags=["panel"])
 app.include_router(nodes.router, prefix="/api/nodes", tags=["nodes"])
 app.include_router(tunnels.router, prefix="/api/tunnels", tags=["tunnels"])
