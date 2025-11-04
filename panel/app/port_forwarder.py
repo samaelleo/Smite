@@ -104,13 +104,17 @@ class PortForwarder:
                 sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 60)
                 sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 10)
                 sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 3)
+                sock.setblocking(False)  # Set non-blocking for asyncio
                 
-                # Connect socket first, then use it for asyncio
-                sock.connect((target_host, target_port))
-                remote_reader, remote_writer = await asyncio.wait_for(
-                    asyncio.open_connection(sock=sock),
-                    timeout=10.0  # Increased timeout
+                # Connect socket asynchronously
+                loop = asyncio.get_event_loop()
+                await asyncio.wait_for(
+                    loop.sock_connect(sock, (target_host, target_port)),
+                    timeout=10.0
                 )
+                
+                # Now use the connected socket for asyncio stream
+                remote_reader, remote_writer = await asyncio.open_connection(sock=sock)
             except asyncio.TimeoutError:
                 logger.warning(f"Timeout connecting to {target_host}:{target_port}")
                 try:
