@@ -6,6 +6,7 @@ from typing import List
 from datetime import datetime
 from pydantic import BaseModel
 import logging
+import sys
 
 from app.database import get_db
 from app.models import Tunnel, Node
@@ -14,6 +15,11 @@ from app.hysteria2_client import Hysteria2Client
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+# Use stderr for immediate output (not buffered)
+def debug_print(msg):
+    print(msg, file=sys.stderr, flush=True)
+    logger.info(msg)
 
 
 class TunnelCreate(BaseModel):
@@ -81,8 +87,7 @@ async def create_tunnel(tunnel: TunnelCreate, request: Request, db: AsyncSession
     
     # Auto-apply tunnel immediately
     try:
-        print(f"DEBUG: Starting tunnel apply for tunnel {db_tunnel.id}")
-        logger.info(f"Starting tunnel apply for tunnel {db_tunnel.id}")
+        debug_print(f"DEBUG: Starting tunnel apply for tunnel {db_tunnel.id}")
         
         client = Hysteria2Client()
         # Update node metadata with API address if not set
@@ -90,7 +95,7 @@ async def create_tunnel(tunnel: TunnelCreate, request: Request, db: AsyncSession
             node.node_metadata["api_address"] = f"http://{node.node_metadata.get('ip_address', node.fingerprint)}:{node.node_metadata.get('api_port', 8888)}"
             await db.commit()
         
-        print(f"DEBUG: Sending tunnel apply to node {node.id}")
+        debug_print(f"DEBUG: Sending tunnel apply to node {node.id}")
         response = await client.send_to_node(
             node_id=node.id,
             endpoint="/api/agent/tunnels/apply",
@@ -103,8 +108,7 @@ async def create_tunnel(tunnel: TunnelCreate, request: Request, db: AsyncSession
         )
         
         # Debug: Print response
-        print(f"DEBUG: Node response for tunnel {db_tunnel.id}: {response}")
-        logger.info(f"Node response for tunnel {db_tunnel.id}: {response}")
+        debug_print(f"DEBUG: Node response for tunnel {db_tunnel.id}: {response}")
         
         # Check if node returned an error
         if response.get("status") == "error":
@@ -116,8 +120,7 @@ async def create_tunnel(tunnel: TunnelCreate, request: Request, db: AsyncSession
             return db_tunnel
         
         if response.get("status") == "success":
-            print(f"DEBUG: Tunnel {db_tunnel.id} applied successfully, status={response.get('status')}")
-            logger.info(f"Tunnel {db_tunnel.id} applied successfully")
+            debug_print(f"DEBUG: Tunnel {db_tunnel.id} applied successfully, status={response.get('status')}")
             db_tunnel.status = "active"
             
             # Start forwarding on panel using gost (for TCP/UDP/WS/gRPC tunnels)
@@ -127,8 +130,7 @@ async def create_tunnel(tunnel: TunnelCreate, request: Request, db: AsyncSession
             
             # Force log output - use print as well to ensure we see it
             log_msg = f"Tunnel {db_tunnel.id}: needs_gost_forwarding={needs_gost_forwarding}, needs_rathole_server={needs_rathole_server}, type={db_tunnel.type}, core={db_tunnel.core}"
-            print(log_msg)
-            logger.info(log_msg)
+            debug_print(log_msg)
             
             if needs_gost_forwarding:
                 remote_port = db_tunnel.spec.get("remote_port") or db_tunnel.spec.get("listen_port")
@@ -216,7 +218,7 @@ async def create_tunnel(tunnel: TunnelCreate, request: Request, db: AsyncSession
         await db.refresh(db_tunnel)
     except Exception as e:
         # Don't fail tunnel creation if apply fails, just mark as error
-        print(f"ERROR: Exception in tunnel creation: {e}")
+        debug_print(f"ERROR: Exception in tunnel creation: {e}")
         logger.error(f"Exception in tunnel creation for {db_tunnel.id}: {e}", exc_info=True)
         error_msg = str(e)
         db_tunnel.status = "error"
