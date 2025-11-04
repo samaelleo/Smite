@@ -81,12 +81,16 @@ async def create_tunnel(tunnel: TunnelCreate, request: Request, db: AsyncSession
     
     # Auto-apply tunnel immediately
     try:
+        print(f"DEBUG: Starting tunnel apply for tunnel {db_tunnel.id}")
+        logger.info(f"Starting tunnel apply for tunnel {db_tunnel.id}")
+        
         client = Hysteria2Client()
         # Update node metadata with API address if not set
         if not node.node_metadata.get("api_address"):
             node.node_metadata["api_address"] = f"http://{node.node_metadata.get('ip_address', node.fingerprint)}:{node.node_metadata.get('api_port', 8888)}"
             await db.commit()
         
+        print(f"DEBUG: Sending tunnel apply to node {node.id}")
         response = await client.send_to_node(
             node_id=node.id,
             endpoint="/api/agent/tunnels/apply",
@@ -212,6 +216,8 @@ async def create_tunnel(tunnel: TunnelCreate, request: Request, db: AsyncSession
         await db.refresh(db_tunnel)
     except Exception as e:
         # Don't fail tunnel creation if apply fails, just mark as error
+        print(f"ERROR: Exception in tunnel creation: {e}")
+        logger.error(f"Exception in tunnel creation for {db_tunnel.id}: {e}", exc_info=True)
         error_msg = str(e)
         db_tunnel.status = "error"
         db_tunnel.error_message = f"Tunnel creation error: {error_msg}"
