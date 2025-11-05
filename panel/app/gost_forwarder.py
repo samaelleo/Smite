@@ -131,7 +131,7 @@ class GostForwarder:
                 raise RuntimeError(error_msg)
             
             # Wait a moment to check if process started successfully
-            time.sleep(1.0)
+            time.sleep(1.5)  # Increased wait time
             poll_result = proc.poll()
             if poll_result is not None:
                 # Process died immediately
@@ -146,20 +146,38 @@ class GostForwarder:
                 except Exception as e:
                     stderr = f"Could not read log file: {e}"
                     stdout = ""
-                error_msg = f"gost failed to start (exit code: {poll_result}): {stderr or stdout or 'Unknown error'}"
+                error_msg = f"gost failed to start (exit code: {poll_result}): {stderr[-500:] if len(stderr) > 500 else stderr or 'Unknown error'}"
                 logger.error(error_msg)
                 raise RuntimeError(error_msg)
             
             # Verify port is actually listening (check after a short delay)
             time.sleep(0.5)
             import socket
+            port_listening = False
             try:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 sock.settimeout(1)
                 result = sock.connect_ex(('127.0.0.1', local_port))
                 sock.close()
-                if result != 0:
-                    logger.warning(f"Port {local_port} not listening after gost start, but process is running. PID: {proc.pid}")
+                port_listening = (result == 0)
+                if not port_listening:
+                    # Check again - sometimes it takes a moment
+                    time.sleep(0.5)
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    sock.settimeout(1)
+                    result = sock.connect_ex(('127.0.0.1', local_port))
+                    sock.close()
+                    port_listening = (result == 0)
+                    
+                if not port_listening:
+                    # Process might have died after initial check
+                    poll_result = proc.poll()
+                    if poll_result is not None:
+                        error_msg = f"gost process died after startup (exit code: {poll_result})"
+                        logger.error(error_msg)
+                        raise RuntimeError(error_msg)
+                    else:
+                        logger.warning(f"Port {local_port} not listening after gost start, but process is running. PID: {proc.pid}")
             except Exception as e:
                 logger.warning(f"Could not verify port {local_port} is listening: {e}")
             
@@ -221,7 +239,23 @@ class GostForwarder:
         if tunnel_id not in self.active_forwards:
             return False
         proc = self.active_forwards[tunnel_id]
-        return proc.poll() is None
+        is_alive = proc.poll() is None
+        if not is_alive and tunnel_id in self.forward_configs:
+            # Process died, try to restart it
+            logger.warning(f"Gost process for tunnel {tunnel_id} died, attempting restart...")
+            try:
+                config = self.forward_configs[tunnel_id]
+                self.start_forward(
+                    tunnel_id=tunnel_id,
+                    local_port=config["local_port"],
+                    forward_to=config["forward_to"],
+                    tunnel_type=config["tunnel_type"]
+                )
+                return True
+            except Exception as e:
+                logger.error(f"Failed to restart gost for tunnel {tunnel_id}: {e}")
+                return False
+        return is_alive
     
     def get_forwarding_tunnels(self) -> list:
         """Get list of tunnel IDs with active forwarding"""
