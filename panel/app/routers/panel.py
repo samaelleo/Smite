@@ -2,9 +2,11 @@
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, Response
 from pathlib import Path
+import logging
 from app.config import settings
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.get("/ca")
