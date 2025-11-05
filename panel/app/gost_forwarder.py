@@ -68,13 +68,16 @@ class GostForwarder:
             elif tunnel_type == "ws":
                 # WebSocket forwarding: listen as WS, forward to TCP
                 # For VLESS over WS, the client connects via WebSocket, but target is TCP
-                # Use chain syntax: -L=ws://:port/tcp://host:port
+                # Use chain syntax: -L=ws://:port/path/tcp://host:port
+                # Default path is / for VLESS over WS
                 if ":" in forward_to:
                     forward_host, forward_port = forward_to.rsplit(":", 1)
                 else:
                     forward_host = forward_to
                     forward_port = "8080"
-                # WebSocket on listen side, TCP on forward side
+                # WebSocket on listen side with path, TCP on forward side
+                # Syntax: ws://listen/path -> tcp://target
+                # Path is / for VLESS over WS
                 cmd = [
                     "/usr/local/bin/gost",
                     f"-L=ws://0.0.0.0:{local_port}/tcp://{forward_host}:{forward_port}"
@@ -176,35 +179,45 @@ class GostForwarder:
                 raise RuntimeError(error_msg)
             
             # Verify port is actually listening (check after a short delay)
-            time.sleep(0.5)
-            import socket
-            port_listening = False
-            try:
-                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.settimeout(1)
-                result = sock.connect_ex(('127.0.0.1', local_port))
-                sock.close()
-                port_listening = (result == 0)
-                if not port_listening:
-                    # Check again - sometimes it takes a moment
-                    time.sleep(0.5)
+            # Skip port check for UDP (uses SOCK_DGRAM, not SOCK_STREAM)
+            if tunnel_type != "udp":
+                time.sleep(0.5)
+                import socket
+                port_listening = False
+                try:
                     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                     sock.settimeout(1)
                     result = sock.connect_ex(('127.0.0.1', local_port))
                     sock.close()
                     port_listening = (result == 0)
-                    
-                if not port_listening:
-                    # Process might have died after initial check
-                    poll_result = proc.poll()
-                    if poll_result is not None:
-                        error_msg = f"gost process died after startup (exit code: {poll_result})"
-                        logger.error(error_msg)
-                        raise RuntimeError(error_msg)
-                    else:
-                        logger.warning(f"Port {local_port} not listening after gost start, but process is running. PID: {proc.pid}")
-            except Exception as e:
-                logger.warning(f"Could not verify port {local_port} is listening: {e}")
+                    if not port_listening:
+                        # Check again - sometimes it takes a moment
+                        time.sleep(0.5)
+                        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                        sock.settimeout(1)
+                        result = sock.connect_ex(('127.0.0.1', local_port))
+                        sock.close()
+                        port_listening = (result == 0)
+                        
+                    if not port_listening:
+                        # Process might have died after initial check
+                        poll_result = proc.poll()
+                        if poll_result is not None:
+                            error_msg = f"gost process died after startup (exit code: {poll_result})"
+                            logger.error(error_msg)
+                            raise RuntimeError(error_msg)
+                        else:
+                            logger.warning(f"Port {local_port} not listening after gost start, but process is running. PID: {proc.pid}")
+                except Exception as e:
+                    logger.warning(f"Could not verify port {local_port} is listening: {e}")
+            else:
+                # For UDP, just verify process is running
+                time.sleep(0.5)
+                poll_result = proc.poll()
+                if poll_result is not None:
+                    error_msg = f"gost UDP process died after startup (exit code: {poll_result})"
+                    logger.error(error_msg)
+                    raise RuntimeError(error_msg)
             
             self.active_forwards[tunnel_id] = proc
             self.forward_configs[tunnel_id] = {
