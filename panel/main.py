@@ -93,48 +93,26 @@ async def _restore_forwards():
             
             for tunnel in tunnels:
                 logger.info(f"Checking tunnel {tunnel.id}: type={tunnel.type}, core={tunnel.core}")
-                # Only restore xray tunnels (tcp, udp, ws, grpc)
+                # Only restore xray tunnels (tcp, udp, ws, grpc) - these use gost and forward directly
                 needs_gost_forwarding = tunnel.type in ["tcp", "udp", "ws", "grpc"] and tunnel.core == "xray"
                 if not needs_gost_forwarding:
                     continue
                 
-                # panel_port: port on panel where gost listens (remote_port from spec = 8080)
-                # node_port: port on node where xray listens (listen_port from spec = 10000)
+                # panel_port: port on panel where gost listens (remote_port from spec)
+                # forward_to: target address:port to forward to directly
                 panel_port = tunnel.spec.get("remote_port") or tunnel.spec.get("listen_port")
-                node_port = tunnel.spec.get("listen_port") or tunnel.spec.get("remote_port")
-                if not panel_port or not node_port:
+                forward_to = tunnel.spec.get("forward_to")
+                if not panel_port or not forward_to:
+                    logger.warning(f"Tunnel {tunnel.id}: Missing panel_port or forward_to, skipping restore")
                     continue
                 
-                # Get node
-                node_result = await db.execute(select(Node).where(Node.id == tunnel.node_id))
-                node = node_result.scalar_one_or_none()
-                if not node:
-                    continue
-                
-                # Get node address
-                node_address = node.node_metadata.get("ip_address") if node.node_metadata else None
-                if not node_address:
-                    # Try to extract from api_address
-                    api_address = node.node_metadata.get("api_address", "") if node.node_metadata else ""
-                    if api_address:
-                        if "://" in api_address:
-                            api_address = api_address.split("://")[-1]
-                        if ":" in api_address:
-                            node_address = api_address.split(":")[0]
-                        else:
-                            node_address = api_address
-                
-                if not node_address:
-                    continue
-                
-                # Start gost forwarding
+                # Start gost forwarding directly to target
                 try:
-                    logger.info(f"Restoring gost forwarding for tunnel {tunnel.id}: {tunnel.type}://:{panel_port} -> {node_address}:{node_port}")
+                    logger.info(f"Restoring gost forwarding for tunnel {tunnel.id}: {tunnel.type}://:{panel_port} -> {forward_to}")
                     gost_forwarder.start_forward(
                         tunnel_id=tunnel.id,
                         local_port=int(panel_port),
-                        node_address=node_address,
-                        remote_port=int(node_port),
+                        forward_to=forward_to,
                         tunnel_type=tunnel.type
                     )
                     logger.info(f"Successfully restored gost forwarding for tunnel {tunnel.id}")

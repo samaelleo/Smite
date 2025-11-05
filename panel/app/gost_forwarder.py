@@ -17,15 +17,14 @@ class GostForwarder:
         self.active_forwards: Dict[str, subprocess.Popen] = {}  # tunnel_id -> process
         self.forward_configs: Dict[str, dict] = {}  # tunnel_id -> config
     
-    def start_forward(self, tunnel_id: str, local_port: int, node_address: str, remote_port: int, tunnel_type: str = "tcp") -> bool:
+    def start_forward(self, tunnel_id: str, local_port: int, forward_to: str, tunnel_type: str = "tcp") -> bool:
         """
-        Start forwarding using gost
+        Start forwarding using gost - forwards directly to target (no node)
 
         Args:
             tunnel_id: Unique tunnel identifier
             local_port: Port on panel to listen on
-            node_address: Node IP address (host only, no port)
-            remote_port: Port on node to forward to
+            forward_to: Target address:port (e.g., "127.0.0.1:9999" or "1.2.3.4:443")
             tunnel_type: Type of forwarding (tcp, udp, ws, grpc)
 
         Returns:
@@ -33,7 +32,7 @@ class GostForwarder:
         """
         import sys
         debug_print = lambda msg: print(f"GOST_FORWARDER: {msg}", file=sys.stderr, flush=True)
-        debug_print(f"start_forward called: tunnel_id={tunnel_id}, local_port={local_port}, node_address={node_address}, remote_port={remote_port}, tunnel_type={tunnel_type}")
+        debug_print(f"start_forward called: tunnel_id={tunnel_id}, local_port={local_port}, forward_to={forward_to}, tunnel_type={tunnel_type}")
         try:
             # Stop existing forward if any
             if tunnel_id in self.active_forwards:
@@ -41,34 +40,35 @@ class GostForwarder:
                 self.stop_forward(tunnel_id)
             
             # Build gost command based on tunnel type
+            # Forward directly to target (forward_to format: "host:port")
             if tunnel_type == "tcp":
-                # TCP forwarding: gost -L=tcp://0.0.0.0:local_port -F=tcp://node:remote_port
+                # TCP forwarding: gost -L=tcp://0.0.0.0:local_port -F=tcp://forward_to
                 # Use 0.0.0.0 to bind to all interfaces (required for host networking)
                 cmd = [
                     "/usr/local/bin/gost",
                     f"-L=tcp://0.0.0.0:{local_port}",
-                    f"-F=tcp://{node_address}:{remote_port}"
+                    f"-F=tcp://{forward_to}"
                 ]
             elif tunnel_type == "udp":
-                # UDP forwarding: gost -L=udp://0.0.0.0:local_port -F=udp://node:remote_port
+                # UDP forwarding: gost -L=udp://0.0.0.0:local_port -F=udp://forward_to
                 cmd = [
                     "/usr/local/bin/gost",
                     f"-L=udp://0.0.0.0:{local_port}",
-                    f"-F=udp://{node_address}:{remote_port}"
+                    f"-F=udp://{forward_to}"
                 ]
             elif tunnel_type == "ws":
-                # WebSocket forwarding (no TLS): gost -L=ws://0.0.0.0:local_port -F=tcp://node:remote_port
+                # WebSocket forwarding (no TLS): gost -L=ws://0.0.0.0:local_port -F=tcp://forward_to
                 cmd = [
                     "/usr/local/bin/gost",
                     f"-L=ws://0.0.0.0:{local_port}",
-                    f"-F=tcp://{node_address}:{remote_port}"
+                    f"-F=tcp://{forward_to}"
                 ]
             elif tunnel_type == "grpc":
-                # gRPC forwarding (no TLS): gost -L=grpc://0.0.0.0:local_port -F=tcp://node:remote_port
+                # gRPC forwarding (no TLS): gost -L=grpc://0.0.0.0:local_port -F=tcp://forward_to
                 cmd = [
                     "/usr/local/bin/gost",
                     f"-L=grpc://0.0.0.0:{local_port}",
-                    f"-F=tcp://{node_address}:{remote_port}"
+                    f"-F=tcp://{forward_to}"
                 ]
             else:
                 raise ValueError(f"Unsupported tunnel type: {tunnel_type}")
@@ -107,10 +107,10 @@ class GostForwarder:
                 # Ensure directory exists
                 log_file.parent.mkdir(parents=True, exist_ok=True)
                 log_f = open(log_file, 'w', buffering=1)  # Line buffered
-                log_f.write(f"Starting gost with command: {' '.join(cmd)}\n")
-                log_f.write(f"Tunnel ID: {tunnel_id}\n")
-                log_f.write(f"Local port: {local_port}, Remote: {node_address}:{remote_port}\n")
-                log_f.flush()
+                   log_f.write(f"Starting gost with command: {' '.join(cmd)}\n")
+                   log_f.write(f"Tunnel ID: {tunnel_id}\n")
+                   log_f.write(f"Local port: {local_port}, Forward to: {forward_to}\n")
+                   log_f.flush()
                 proc = subprocess.Popen(
                     cmd,
                     stdout=log_f,
