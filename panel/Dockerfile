@@ -99,20 +99,22 @@ ARG BACKHAUL_MODULE=github.com/zZedix/backhaul
 ARG BACKHAUL_VERSION=latest
 ENV GO111MODULE=on
 ENV GOBIN=/usr/local/bin
-RUN apt-get update && apt-get install -y golang && rm -rf /var/lib/apt/lists/* && \
-    GOBIN=/usr/local/bin go install ${BACKHAUL_MODULE}/cmd/backhaul@${BACKHAUL_VERSION} && \
-    if [ ! -x /usr/local/bin/backhaul ]; then \
-        GOPATH_BIN=$(go env GOPATH)/bin/backhaul; \
-        if [ -f "$GOPATH_BIN" ]; then \
-            cp "$GOPATH_BIN" /usr/local/bin/backhaul; \
-        else \
-            echo "Backhaul binary missing after installation"; \
-            ls -R $(go env GOPATH)/bin || true; \
-            exit 1; \
-        fi; \
-    fi && \
-    chmod +x /usr/local/bin/backhaul && \
-    /usr/local/bin/backhaul --version || true
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y golang; \
+    rm -rf /var/lib/apt/lists/*; \
+    mkdir -p /opt/backhaul; \
+    GOBIN=/tmp/backhaul-bin go install ${BACKHAUL_MODULE}/cmd/backhaul@${BACKHAUL_VERSION}; \
+    if [ -f /tmp/backhaul-bin/backhaul ]; then \
+        install -Dm755 /tmp/backhaul-bin/backhaul /opt/backhaul/backhaul; \
+    elif [ -f "$(go env GOPATH)/bin/backhaul" ]; then \
+        install -Dm755 "$(go env GOPATH)/bin/backhaul" /opt/backhaul/backhaul; \
+    else \
+        echo "Backhaul binary missing after installation"; \
+        ls -R "$(go env GOPATH)/bin" || true; \
+        exit 1; \
+    fi; \
+    /opt/backhaul/backhaul --version || true
 
 # Stage 4: Frontend build (cached layer)
 FROM node:18-alpine AS frontend-build
@@ -143,7 +145,7 @@ WORKDIR /app
 # Copy binaries from binaries stage
 COPY --from=binaries /usr/local/bin/rathole /usr/local/bin/rathole
 COPY --from=binaries /usr/local/bin/gost /usr/local/bin/gost
-COPY --from=backhaul-bin /usr/local/bin/backhaul /usr/local/bin/backhaul
+COPY --from=backhaul-bin /opt/backhaul/backhaul /usr/local/bin/backhaul
 
 # Copy Python dependencies from deps stage
 COPY --from=deps /usr/local /usr/local
